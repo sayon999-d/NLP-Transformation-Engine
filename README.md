@@ -2,6 +2,8 @@
 
 An advanced NLP text transformation application built with Streamlit and LangChain. It converts AI-generated text into natural, human-like writing through configurable pipelines for humanization, summarization, and readability optimization.
 
+Live Demo - https://nlp-transformation-engine.streamlit.app/
+
 ## Features
 
 - **Humanization** — Rewrites AI-generated text to sound naturally human-written with AI-detection resistance
@@ -15,47 +17,60 @@ An advanced NLP text transformation application built with Streamlit and LangCha
 
 ## Pipeline Architecture
 
-```
-Input Text
-    |
-    v
-[Step 1] Analyze Input
-    - Detect verbosity, repetition, tone, structure
-    - Identify AI writing patterns (18 pattern types)
-    - Compute readability metrics
-    |
-    v
-[Step 2] Tone Mapping
-    - Slider 0-20   -> Minimal rewrite
-    - Slider 21-50  -> Light naturalization
-    - Slider 51-80  -> Moderate humanization
-    - Slider 81-100 -> Strong human-like rewriting
-    |
-    v
-[Step 3] Processing Order
-    - Long text  -> Summarize first, then humanize
-    - Short text -> Humanize first, then summarize
-    |
-    v
-[Step 4] Summarization (if enabled)
-    - Short: 20-30% compression
-    - Medium: 40-60% compression
-    - Long: 70-80% compression
-    |
-    v
-[Step 5] Humanization (if enabled)
-    - Natural phrasing and sentence diversity
-    - AI-detection resistance patterns
-    - Style-appropriate readability targeting
-    |
-    v
-[Post-Processing]
-    - Remove LLM meta-commentary
-    - Grammar verification
-    - Clipboard flag injection (if enabled)
-    |
-    v
-Output Text + Metrics
+```mermaid
+flowchart TD
+    A["Input Text"] --> B["Step 1: Analyze Input"]
+
+    B --> B1["Detect verbosity, repetition, tone"]
+    B --> B2["Identify AI writing patterns (18 types)"]
+    B --> B3["Compute readability metrics"]
+
+    B1 --> C["Step 2: Tone Mapping"]
+    B2 --> C
+    B3 --> C
+
+    C --> C1["Slider 0-20: Minimal rewrite"]
+    C --> C2["Slider 21-50: Light naturalization"]
+    C --> C3["Slider 51-80: Moderate humanization"]
+    C --> C4["Slider 81-100: Strong rewriting"]
+
+    C1 --> D["Step 3: Processing Order"]
+    C2 --> D
+    C3 --> D
+    C4 --> D
+
+    D --> D1{"Text length?"}
+    D1 -->|"Long text"| E1["Summarize first"]
+    D1 -->|"Short text"| E2["Humanize first"]
+
+    E1 --> F["Step 4: Summarization"]
+    E2 --> G["Step 5: Humanization"]
+
+    F --> F1["Short: 20-30% compression"]
+    F --> F2["Medium: 40-60% compression"]
+    F --> F3["Long: 70-80% compression"]
+
+    F1 --> G
+    F2 --> G
+    F3 --> G
+
+    G --> G1["Natural phrasing and sentence diversity"]
+    G --> G2["AI-detection resistance patterns"]
+    G --> G3["Style-appropriate readability targeting"]
+
+    G1 --> H["Post-Processing"]
+    G2 --> H
+    G3 --> H
+
+    E2 --> F
+
+    H --> H1["Remove LLM meta-commentary"]
+    H --> H2["Grammar verification"]
+    H --> H3["Clipboard flag injection"]
+
+    H1 --> I["Output Text + Metrics"]
+    H2 --> I
+    H3 --> I
 ```
 
 ## Project Structure
