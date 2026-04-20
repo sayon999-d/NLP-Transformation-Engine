@@ -13,12 +13,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-try:
-    for key in ("GROQ_API_KEY", "LLM_PROVIDER", "LLM_MODEL", "LLM_TEMPERATURE", "LLM_MAX_TOKENS"):
-        if key in st.secrets and not os.getenv(key):
-            os.environ[key] = str(st.secrets[key])
-except Exception:
-    pass
+
+def _load_streamlit_secrets():
+    try:
+        for key in ("GROQ_API_KEY", "LLM_API_KEY", "LLM_PROVIDER", "LLM_MODEL", "LLM_TEMPERATURE", "LLM_MAX_TOKENS"):
+            if key in st.secrets and not os.getenv(key):
+                os.environ[key] = str(st.secrets[key])
+    except Exception:
+        pass
 
 logging.basicConfig(
     level=logging.INFO,
@@ -368,12 +370,16 @@ class NLPEngine:
 
 
 def create_llm():
+    _load_streamlit_secrets()
     provider = os.getenv("LLM_PROVIDER", "groq").lower().strip()
     model = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
-    api_key = os.getenv("LLM_API_KEY", os.getenv("GROQ_API_KEY", ""))
+    api_key = os.getenv("LLM_API_KEY") or os.getenv("GROQ_API_KEY") or ""
     base_url = os.getenv("LLM_BASE_URL", "")
     temperature = float(os.getenv("LLM_TEMPERATURE", "0.3"))
     max_tokens = int(os.getenv("LLM_MAX_TOKENS", "4096"))
+
+    if not api_key and provider != "ollama":
+        raise RuntimeError(f"No API key found. Set GROQ_API_KEY in Streamlit secrets or .env")
 
     if provider == "groq":
         from langchain_groq import ChatGroq
@@ -446,14 +452,16 @@ def create_llm():
         )
 
 
-@st.cache_resource
 def get_engine() -> NLPEngine:
+    if "nlp_engine" in st.session_state and st.session_state.nlp_engine._llm is not None:
+        return st.session_state.nlp_engine
     try:
         llm = create_llm()
         engine = NLPEngine(llm=llm)
         logger.info("NLP Engine initialized (provider=%s, model=%s)",
                      os.getenv("LLM_PROVIDER", "groq"),
                      os.getenv("LLM_MODEL", "llama-3.3-70b-versatile"))
+        st.session_state.nlp_engine = engine
         return engine
     except Exception as exc:
         logger.error("LLM init failed: %s", exc)
