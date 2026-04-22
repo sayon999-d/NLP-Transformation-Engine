@@ -101,11 +101,13 @@ class NLPEngine:
         if auto_clipboard:
             processed = processed.rstrip() + "\n\n[CLIPBOARD_COPY_READY]"
 
+        output_analysis = self.analyze_text(processed.replace("[CLIPBOARD_COPY_READY]", "").strip())
         readability = self.compute_readability(processed)
 
         return {
             "output": processed,
             "analysis": analysis,
+            "output_analysis": output_analysis,
             "readability": readability,
             "stages_applied": stages_applied,
             "input_length": len(text),
@@ -121,6 +123,7 @@ class NLPEngine:
         sentences = self._split_sentences(text)
         word_count = len(words)
         sentence_count = max(len(sentences), 1)
+        sentence_lengths = [len(sentence.split()) for sentence in sentences] or [word_count]
 
         if len(words) > 1:
             bigrams = [f"{words[i]} {words[i+1]}" for i in range(len(words) - 1)]
@@ -135,6 +138,14 @@ class NLPEngine:
             else "medium" if avg_sentence_len > 15
             else "low"
         )
+        verbosity_score = min(max((avg_sentence_len - 8) / 24, 0), 1) * 100
+
+        if len(sentence_lengths) > 1:
+            variance = sum((length - avg_sentence_len) ** 2 for length in sentence_lengths) / len(sentence_lengths)
+            sentence_length_std = variance ** 0.5
+            sentence_variation = sentence_length_std / max(avg_sentence_len, 1)
+        else:
+            sentence_variation = 0.0
 
         ai_patterns = [
             r'\bfurthermore\b', r'\bmoreover\b', r'\bin conclusion\b',
@@ -148,7 +159,32 @@ class NLPEngine:
         ai_pattern_count = sum(
             len(re.findall(p, text, re.IGNORECASE)) for p in ai_patterns
         )
-        ai_likelihood = min(ai_pattern_count / max(sentence_count, 1) * 100, 100)
+
+        structural_patterns = [
+            r'\bfirst(?:ly)?\b', r'\bsecond(?:ly)?\b', r'\bthird(?:ly)?\b',
+            r'\badditionally\b', r'\bmore importantly\b', r'\bhowever\b',
+            r'\btherefore\b', r'\boverall\b', r'\bin summary\b',
+            r'\bin essence\b', r'\bultimately\b',
+        ]
+        structural_pattern_count = sum(
+            len(re.findall(p, text, re.IGNORECASE)) for p in structural_patterns
+        )
+
+        ai_phrase_score = min(ai_pattern_count * 14, 100)
+        structural_score = min(structural_pattern_count * 8, 100)
+        repetition_score = min(repetition_ratio * 200, 100)
+        uniformity_score = min(max((0.6 - sentence_variation) / 0.6, 0), 1) * 100
+
+        base_ai_likelihood = min(
+            ai_phrase_score * 0.45
+            + structural_score * 0.15
+            + verbosity_score * 0.2
+            + repetition_score * 0.1
+            + uniformity_score * 0.1,
+            100,
+        )
+        verbosity_floor = min(verbosity_score * 0.35 + uniformity_score * 0.15, 100)
+        ai_likelihood = max(base_ai_likelihood, verbosity_floor)
 
         paragraph_count = len([p for p in text.split('\n\n') if p.strip()])
 
@@ -158,8 +194,11 @@ class NLPEngine:
             "paragraph_count": paragraph_count,
             "avg_sentence_length": round(avg_sentence_len, 1),
             "verbosity": verbosity,
+            "verbosity_score_pct": round(verbosity_score, 1),
             "repetition_ratio": round(repetition_ratio, 3),
             "ai_pattern_count": ai_pattern_count,
+            "structural_pattern_count": structural_pattern_count,
+            "sentence_variation": round(sentence_variation, 3),
             "ai_likelihood_pct": round(ai_likelihood, 1),
             "text_is_long": len(text) > self.LONG_TEXT_THRESHOLD,
         }
@@ -793,8 +832,11 @@ def main():
                     st.json({
                         "paragraphs": analysis["paragraph_count"],
                         "avg_sentence_length": analysis["avg_sentence_length"],
+                        "verbosity_score_pct": analysis["verbosity_score_pct"],
                         "repetition_ratio": analysis["repetition_ratio"],
                         "ai_patterns_found": analysis["ai_pattern_count"],
+                        "structural_patterns_found": analysis["structural_pattern_count"],
+                        "sentence_variation": analysis["sentence_variation"],
                         "is_long_text": analysis["text_is_long"],
                     })
                 with ac2:
@@ -929,11 +971,12 @@ def main():
                 </div>
             """, unsafe_allow_html=True)
 
-            ai_pct = result.get("analysis", {}).get("ai_likelihood_pct", 0)
+            output_analysis = result.get("output_analysis", {})
+            ai_pct = output_analysis.get("ai_likelihood_pct", 0)
             m4.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-value">{ai_pct:.0f}%</div>
-                    <div class="metric-label">AI Likelihood</div>
+                    <div class="metric-label">Output AI Likelihood</div>
                 </div>
             """, unsafe_allow_html=True)
 
@@ -956,7 +999,8 @@ def main():
             if elapsed:
                 st.caption(f"Processed in {elapsed:.1f}s / "
                           f"Complexity: {result.get('readability', {}).get('complexity_rating', '-')} / "
-                          f"Level: {result.get('humanization_level', 0):.1f}")
+                          f"Level: {result.get('humanization_level', 0):.1f} / "
+                          f"Output Verbosity: {output_analysis.get('verbosity', '-').title()}")
 
         else:
             st.markdown("""
